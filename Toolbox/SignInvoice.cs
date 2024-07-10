@@ -9,7 +9,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Org.BouncyCastle.Asn1;
 using Org.BouncyCastle.Asn1.Ess;
-using Toolbox.Invoice;
+using ProDesk.Domain.Model.Invoice;
 
 namespace Toolbox;
 
@@ -75,13 +75,29 @@ public class SignInvoice
         return true;
     }
     
-    private async Task<string> ProcessJson(long id, InvoiceDocumentModel model) {
-        JObject? request = JsonConvert.DeserializeObject<JObject>(JsonConvert.SerializeObject(model), new JsonSerializerSettings
+    private async Task<string> ProcessJson(long id, InvoiceDocumentModel model)
+    {
+        string jsonToPost = JsonConvert.SerializeObject(model,
+            new JsonSerializerSettings
+            {
+                ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+                FloatFormatHandling = FloatFormatHandling.String,
+                FloatParseHandling = FloatParseHandling.Decimal,
+                DateFormatString = "yyyy-MM-ddTHH:mm:ss",
+                DateParseHandling = DateParseHandling.None,
+                NullValueHandling = NullValueHandling.Ignore,
+                ContractResolver = new IgnorePropertiesResolver(["signatures"]),
+                Converters = new List<JsonConverter> { new NumberJsonConverter() }
+            }
+        );
+        JObject? request = JsonConvert.DeserializeObject<JObject>(jsonToPost, new JsonSerializerSettings
         {
             FloatFormatHandling = FloatFormatHandling.String,
             FloatParseHandling = FloatParseHandling.Decimal,
             DateFormatHandling = DateFormatHandling.IsoDateFormat,
-            DateParseHandling = DateParseHandling.None
+            DateParseHandling = DateParseHandling.None,
+            NullValueHandling = NullValueHandling.Ignore,
+            ContractResolver = new IgnorePropertiesResolver(["signatures"])
         });
 
         if (request is null) return "Failed to deserialize invoice.";
@@ -98,7 +114,7 @@ public class SignInvoice
         
         SignatureModel signature = new SignatureModel()
         {
-            type = "I",
+            signatureType = "I",
             value = result
         };
         List<SignatureModel> signatures = [signature];
@@ -107,8 +123,8 @@ public class SignInvoice
 
         return success ? string.Empty : "Failed to sign invoice.";
     }
-    
-    public string SerializeJson(JObject request)
+
+    private string SerializeJson(JObject request)
     {
         return SerializeJsonToken(request);
     }
@@ -140,6 +156,10 @@ public class SignInvoice
                     if(property.Type == JTokenType.String)
                     {
                         serialized +=  JsonConvert.ToString(property.Value<string>()) ;
+                    }
+                    if (property.Type == JTokenType.Date)
+                    {
+                        serialized += "\"" + property.Value<DateTime>().ToString("yyyy-MM-ddTHH:mm:ss") + "\"";
                     }
                     if (property.Type == JTokenType.Array)
                     {
@@ -238,10 +258,12 @@ public class SignInvoice
             this.HashBytes(certForSigning.RawData)
         );
                 
-        SigningCertificateV2 signerCertificateV2 = new SigningCertificateV2(new EssCertIDv2[] { bouncyCertificate });
-        CmsSigner signer = new CmsSigner(certForSigning);
+        SigningCertificateV2 signerCertificateV2 = new SigningCertificateV2([bouncyCertificate]);
+        CmsSigner signer = new CmsSigner(certForSigning)
+        {
+            DigestAlgorithm = new Oid("2.16.840.1.101.3.4.2.1")
+        };
 
-        signer.DigestAlgorithm = new Oid("2.16.840.1.101.3.4.2.1");
         signer.SignedAttributes.Add(new Pkcs9SigningTime(DateTime.UtcNow));
         signer.SignedAttributes.Add(new AsnEncodedData(new Oid("1.2.840.113549.1.9.16.2.47"), signerCertificateV2.GetEncoded()));
         cms.ComputeSignature(signer);

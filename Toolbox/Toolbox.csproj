@@ -16,4 +16,10 @@
         <PackageReference Include="System.Security.Cryptography.Pkcs" Version="9.0.0-preview.6.24327.7" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Reference Include="ProDesk.Domain">
+        <HintPath>..\..\ProDesk-Backend\ProDesk.Domain\bin\Release\net8.0\win-x64\ProDesk.Domain.dll</HintPath>
+      </Reference>
+    </ItemGroup>
+
 </Project>
